@@ -1197,3 +1197,726 @@ int (*f1(int))(int*, int);
 auto f1(int) ->int (*)(int*, int);
 ```
 
+### 第7章 类
+
+#### 7.1 定义抽象数据类型
+
+改进的`Sales_data`类型：
+
+```c++
+struct Sales_data{
+    std::string isbn() const {return bookNo;}
+    Sales_data& combine(const Sales_data&);
+    double avg_price() const;
+    std::string bookNo;
+    unsigned units_sold = 0;
+    double revenue = 0.0;
+};
+
+
+//Sales_data的非成员接口函数
+Sales_data& add(const Sales_data&, const Sales_data&);
+std::ostream &print(std::ostream&, const Sales_data&);
+std::istream &read(std::istream&, const Sales_data&);
+```
+
+> 定义在类内部的函数是隐式的`inline`函数
+
+所有的成员必须在类的内部声明，但是定义可以在类外。
+
+**代码分析：**
+
+```c++
+std::string isbn() const {return bookNo;}
+```
+
+调用`Sales_data`的`isbn`成员时传入了`total`的地址，对于我们而言，`this`形参时隐式定义的，实际上，任何自定义名为`this`的参数或变量的行为都是非法的。
+
+我们可以将上述代码等价为如下形式：
+
+```C++
+std::sting isbn() const {return this->bookNO;}
+```
+
+`this` 是一个常量指针，我们不允许改变`this`中保存的地址。
+
+注意，上述代码中的`const` 的作用是修改隐式`this` 指针的类型，`const`放在成员函数的参数列表之后，此时，表示`this`是一个指向常量的指针，像这样适用的`const`的成员函数被称为常量成员函数，可以把上述代码想象成如下的形式：
+
+```c++
+std::string Sales_data::isbn(const Sales_data *const this)
+{return this->bookNO;}
+//伪代码，书上的程序有点问题
+```
+
+因为此时的`this`是指向常量的指针，所以常量成员函数不能改变调用它的对象的内容。
+
+值得注意的是，即使`bookNo`定义在`isbn`之后，`isbn`也还是可以使用`bookNo`，这是因为，编译器分为两步处理，首先编译成员的声明，然后才轮到成员函数体，因此，成员函数体可以随意使用类中的其他成员而无须在意这些成员出现的位置。
+
+**在类的外部定义成员函数**
+
+类外部定义的成员的名字必须包含它所属的类名：
+
+```c++
+double Sales_data::avg_price() const{
+    if(units_sold)
+        return revenue/units_sold;
+    else
+        return 0;
+}
+```
+
+**定义一个返回this对象的函数**
+
+```c++
+Sales_data& Sales_data::combine(const Sales_data &rhs){
+    units_sold += rhs.units_sold;
+    revenue += rhs.revenue;
+    return *this;
+}
+```
+
+当我们调用如下函数时：
+
+```c++
+total.combine(trans);
+```
+
+`total` 的地址被绑定在隐式的`this`参数上。
+
+**定义类相关的非成员函数**
+
+类的作者常常需要定义一些辅助函数，尽管这些函数定义的操作从概念上来说属于类的接口的组成部分，但他们实际上并不属于类本身。
+
+> 一般来说，如果非成员函数时类接口的组成部分，则这些函数的声明应该与类在同一个头文件内。
+
+**定义read和print函数**
+
+```c++
+std::istream &read(std::istream &is, Sales_data &item)
+{
+    double price = 0;
+    is >> item.bookNo >> item.units_sold >> price;
+    item.revenue = price * item.units_sold;
+    return is;
+}
+std::ostream &print(std::ostream &os,const Sales_data &item)
+{
+    os << item.isbn() << " " << item.units_sold << " " 
+       << item.revenue << " " << item.avg_price(); 
+    return os;
+}
+```
+
+**定义add函数**
+
+```c++
+Sales_data& add(const Sales_data &lhs, const Sales_data &rhs)
+{
+    Sales_data sum = lhs;
+    sum.combine(rhs);
+    return sum;
+}
+```
+
+**构造函数**
+
+构造函数的作用是初始化类对象的数据成员 ，无论何时只要类对象被创建，就会制成构造函数。构造函数的名字和类的名字相同，和其他函数不同的是，构造函数没有返回类型。注意，**构造函数不能声明称const类型**，当我们创建类的一个const对象时，直到构造函数完成初始化过程，对象才能被真正取得其常量属性， 因此，构造函数在const对象的构造过程中可以向其写值。
+
+一般而言，编译器会为我们隐式的定义默认构造函数，默认构造函数没有任何实参。
+
+**定义Sales_data的构造函数**
+
+```c++
+struct Sales_data{
+    //新的构造函数
+    Sales_data() = default;
+    Sales_data(const std::string &s): bookNo(s){}
+	Sales_data(const std::string &s, unsigned n, double p): 
+    	bookNo(s), units_sold(n),revenue(p*n){}
+    Sales_data(std::istream &);
+    
+    std::string isbn() const {return bookNo;}
+    Sales_data& combine(const Sales_data&);
+    double avg_price() const;
+    std::string bookNo;
+    unsigned units_sold = 0;
+    double revenue = 0.0;
+}；
+```
+
+**在类的外部定义构造函数**
+
+与其他几个构造函数不同，以`istream`为参数的构造函数需要一些实际的操作。
+
+```c++
+Sales_data::Sale_data(std::istream is)
+{
+    read(is,*this);
+    
+}
+```
+
+**类的拷贝**
+
+```c++
+    Sales_data total;
+    Sales_data trans;
+	total = trans;
+```
+
+> 值得注意的是，管理动态内存的类不用依赖于上述操作的合成版本，但是，使用`vector`或者`string`的类能避免分配和释放内存带来的复杂性，进一步讲，如果类包含`vector`和`string`成员，则其拷贝、赋值等操作能够正常工作。
+
+
+
+#### 7.2 访问控制与封装
+
+使用**访问说明符**加强类的封装性：
+
+- 定义在`public`说明符之后的成员在整个程序内可被访问
+- 定义在`private`说明符之后的成员可以被类的成员函数访问，但是不能被使用该类的代码访问。
+
+```c++
+class Sales_data{
+public:
+    Sales_data() = default;
+    Sales_data(const std::string &s): bookNo(s){}
+	Sales_data(const std::string &s, unsigned n, double p): 
+    	bookNo(s), units_sold(n),revenue(p*n){}
+    Sales_data(std::istream &);
+    std::string isbn() const {return bookNo;}
+    Sales_data& combine(const Sales_data&);
+private:
+    double avg_price() const;
+    std::string bookNo;
+    unsigned units_sold = 0;
+    double revenue = 0.0;
+};
+```
+
+**class关键字**
+
+`class`和`struct` 的区别并不是很大，即访问的默认权限不太一样。
+
+类可以在它的第一个访问说明符之前定义成员，对这种成员的访问权限依赖于类定义的方式，如果我们使用`struct` 关键字，则定义在第一个访问说明符之前的成员时`public`，`class`反之。
+
+**友元**
+
+类可以允许其他类或者函数访问他的非公有成员，方法是令其他类或者函数成为他的右元。
+
+```c++
+class Sales_data{
+    friend Sales_data add(const Sales_data&, const Sales_data&);	
+	friend std::ostream &print(std::ostream&, const Sales_data&);
+	friend std::istream &read(std::istream&, Sales_data&);
+public:
+    Sales_data() = default;
+    Sales_data(const std::string &s): bookNo(s){}
+	Sales_data(const std::string &s, unsigned n, double p): bookNo(s), units_sold(n),revenue(p*n){}
+    Sales_data(std::istream &);
+    std::string isbn() const {return bookNo;}
+    Sales_data& combine(const Sales_data&);
+private:
+    double avg_price() const
+        {return units_sold ? revenue/units_sold : 0;}
+    std::string bookNo;
+    unsigned units_sold = 0;
+    double revenue = 0.0;
+};
+
+Sales_data add(const Sales_data&, const Sales_data&);	
+std::ostream &print(std::ostream&, const Sales_data&);
+std::istream &read(std::istream&, const Sales_data&);
+```
+
+右元声明只能出现在类定义的内部，但是在类的内部出现的具体位置不限，友元不是类的成员也不受它所在的区域访问控制级别的约束。如果我们希望类的用户能够调用某个友元函数，那么我们就必须在友元声明以外再专门对函数进行一次声明。
+
+> 注意，声明和定义的时候，函数中常量参数的定义一定要一致，否则会出现`member is inaccessible`或者`is private`的问题，此时并不是因为我们对于公有私有的变量定义有问题，而是无法改变`const`变量导致的错误。
+
+#### 7.3 类的其他特性
+
+**定义一个成员函数**
+
+类可以定义某种类型在类中的别名，用类定义的类型别名和其他成员函数一样存在访问限制。
+
+```c++
+class Screen{
+    public:
+        typedef std::string::size_type pos;
+    private:
+        pos cursor = 0;
+        pos height = 0, width = 0;
+        std::string contents;
+};
+```
+
+可以使用等价定义：
+
+```c++
+using pos = std::string::size_type
+```
+
+注意，用来定义类型的成员必须先定义后使用。
+
+**内联函数**
+
+定义在类内部的成员函数是自动`inline` 的，因此`get`函数默认是`inline`的。我们可以在把类内部`inline`作为声明的一部分显示地声明成员函数，同样的，也能在类的外部用`inline`关键字修饰函数的定义。
+
+```c++
+inline Screen &Screen::move(pos r, pos c)
+{
+    pos row = r * width;
+    cursor = row + c;
+    return *this;
+
+}
+char Screen::get(pos r, pos c) const
+{
+    pos row = r * width;
+    return contents[row + c];
+}
+```
+
+**重载成员函数**
+
+```c++
+class Screen{
+    public:
+        typedef std::string::size_type pos;
+        Screen() = default;
+
+        Screen(pos ht, pos wd, char c): height(ht), width(wd), contents(ht*wd, c){}
+        char get() const {return contents[cursor]; }
+        inline char get(pos ht, pos wd) const;
+        Screen &move (pos r, pos c);
+
+    private:
+        pos cursor = 0;//光标的位置
+        pos height = 0, width = 0;//屏幕的长宽
+        std::string contents;
+};
+```
+
+我们在`Screen`类中定义了两个版本的`get`函数，一个返回返回光标当前位置的字符，另一个返回行号和列号确定的位置的字符，编译器根据实参的数量来决定运行哪个版本的函数。
+
+```c++
+    Screen myscreen;
+    char ch = myscreen.get();
+    ch = myscreen.get(0,0);
+```
+
+**可变数据成员**
+
+有时，我们希望能修改某个数据成员，即使是在`const`成员函数内，可以通过在变量的声明中加`mutable`关键字做到这一点。
+
+```c++
+class Screen{
+public:
+    void some_member() const;
+private:
+    mutable size_t access_ctr;
+};
+void Screen::some_member() const
+{
+    ++access_ctr; //保存一个计数器，用于记录成员函数被调用的次数
+}
+```
+
+对于任何成员函数，包括`const`函数在内都能改变它的值。
+
+**类数据成员的初始化**
+
+```c++
+#include<vector>
+class Window_mgr{
+    private:
+        std::vector<Screen> screens{Screen(24,80, ' ')};
+};
+```
+
+类内初始化必须使用=的初始化形式或者花括号括起来的直接初始化形式。
+
+```c++
+class Screen
+{
+    public:
+    	Screen &set(char);
+    	Screen &set(pos, pos, char);
+    
+}
+inline Screen &Screen::set(char c)
+{
+    contents[cursor] = c;
+    return *this;
+}
+
+inline Screen &Screen::set(pos r, pos col, char c)
+{
+    contents[r*width + col] = c;
+    return *this;
+}
+
+```
+
+返回引用的函数是左值的，意味着这些函数返回的是对象本身而非对象的副本。
+
+```c++
+myScreen.move(4,0).set('#');
+```
+
+如果我们令`move`和`set`返回`Screen`而非`Screen &`,则上述语句的行为将大不相同。在此例中等价于：
+
+```c++
+Screen temp = myScreen.move(4,0);
+temp.set(‘#’);
+```
+
+假如我们定义的返回类型不是引用，调用`set`只能改变临时副本，而不能改变`myScreen`的值。
+
+**基于const的重载**
+
+> 一个`const`成员函数如果以引用的形式返回*this，那么它的返回类型将是常量引用。
+
+```c++
+Screen myScreen;
+//如果display返回常量引用，则调用set将引发错误。
+myScreen.display(cout).set('*');
+//出现问题
+
+class Screen{
+    public:
+        Screen &display(std::ostream &os)
+            {do_display(os); return *this;}
+        const Screen &display(std::ostream &os) const
+            {do_display(os); return *this;}
+    private:
+            void do_display(std::ostream &os) const {os << contents;}
+};
+```
+
+**函数解析**
+
+```c++
+const Screen &display(std::ostream &os) const
+```
+
+这里面第一个`const`表示函数的返回值是一个常量，后面的`const`表示`this`的常量属性，即不可以通过本函数修改`this`指向的对象（类中的成员）。
+
+> 值得注意的是`Screen &display()`的写法和`Screen& display()`的写法并没有差别，取决于个人习惯。
+
+```c++
+    Screen blank(5, 3, '*');
+    myscreen.set('#').display(cout);
+//调用非常量版本
+    cout << endl;
+    blank.display(cout);
+//调用常量版本
+```
+
+**类类型**
+
+对于两个类而言，即使成员完全一样，这两个类也是两个不同的类型。
+
+对于一个类而言，在我们创建它的对象之前该类必须被定义过，而不能仅仅被声明。
+
+**友元类**
+
+```c++
+class Screen{
+    friend class Window_mgr;
+}
+class Window_mgr{
+    public:
+        using ScreenIndex = std::vector<Screen>::size_type;
+        void clear(ScreenIndex);
+    private:
+        std::vector<Screen> screens{Screen(24,80, ' '),Screen(32,60, '*')};
+};
+void Window_mgr::clear(ScreenIndex i)
+{
+    Screen &s = screens[i];
+    s.contents = std::string(s.height * s.width, ' ');
+}
+
+```
+
+> 友元关系不具有传递性。
+
+**友元函数**
+
+我们还可以令成员函数作为友元。
+
+```c++
+class Screen(){
+    friend void Window_mgr::clear(ScreenIndex);
+}
+```
+
+我们必须按照如下方式设计程序：
+
+- 首先定义`Window_mgr`类，其中声明`clear`函数，但是不能定义它。在`clear`使用`Screen` 的成员之前必须先声明`Screen`。
+- 然后定义`Screen` ,包括对于`clear`的友元函数。
+- 最后定义`clear`，此时它才可以使用`Screen`的成员。
+
+```c++
+class screen;
+//先声明screen，因为在Window_mgr类中使用到了screen类
+
+class Window_mgr{
+    public:
+        using ScreenIndex = std::vector<Screen>::size_type;
+        void clear(ScreenIndex);
+    private:
+        std::vector<Screen> screens;
+};
+class Screen(){
+    friend void Window_mgr::clear(ScreenIndex);
+}
+void Window_mgr::clear(ScreenIndex i)
+{
+    Screen &s = screens[i];
+    s.contents = std::string(s.height * s.width, ' ');
+}
+```
+
+类和非成员函数的声明不是必须在它们的友元声明之前，当一个名字第一次出现在一个友元函数声明中时，我们隐式地假定改名字在当前作用域中是可见的。
+
+甚至在类的内部定义该函数，我们也必须在类的外部提供相应的声明从而使得函数可见。换句话说，即使我们仅仅是用声明友元的类的成员调用该友元函数，它也必须是被声明过的。
+
+```c++
+struct X{
+    friend void f(){/*友元函数可以定义在类中*/}
+    X() { f();} //错误
+};
+void X::g() {retrun f();} //错误
+void f();
+void X::g() {retrun f();} //正确
+```
+
+#### 7.4 类的作用域
+
+每个类都会有作用域，在类的作用域之外，普通的数据和函数成员只能由对象、引用或者指针使用成员访问运算符来访问。
+
+```c++
+Screen::pos ht = 24, wd = 80;
+Screen scr(ht,wd, ' ');
+Screen *p = &scr;
+char c = scr.get();
+c = ->get();
+```
+
+一个类就是一个定义域很好的说明了，为什么当我们在类的外部定义成员函数时必须提供类名和函数名。
+
+我们向`Window_mgr`添加一个新的函数，它负责向显示器添加一个新的屏幕。
+
+```c++
+class Window_mgr{
+    public:
+        
+        using ScreenIndex = std::vector<Screen>::size_type;
+        void clear(ScreenIndex);
+        ScreenIndex addScreen(const Screen&);
+    private:
+        std::vector<Screen> screens;
+};
+Window_mgr::ScreenIndex Window_mgr::addScreen(const Screen &s)
+{
+    screens.push_back(s);
+    return screens.size() - 1;
+}
+```
+
+类的定义分为两步：
+
+- 首先，编译成员的声明。
+- 直到类全部可见后才编译函数体。
+
+**类型名要特殊处理**
+
+一般来说，内层作用域可以重新定义外层作用域中的名字，即使该名字已经在内层作用域中使用过，然而在类中，如果成员使用了外层作用域中的某个名字，而该名字代表一种类型，则类不能在之后重新定义该名字。即使两次定义的类型是一致的，依然会出现错误。
+
+> 类型名的定义往往出现在类的开始处，这样就能确保所有使用过该类型的成员都出现在类名的定义之后。
+
+#### 7.5 构造函数再探
+
+**构造函数的初始值有时必不可少**
+
+如果数据成员是`const`或者是引用的话，必须将其初始化。类似的，如果成员属于某种类类型且该类没有定义默认构造函数时，也必须将这个成员初始化。
+
+随着构造函数体一开始执行，初始化就完成了，我们初始化`const`或者是引用类型的数据成员的唯一机会就是通过构造函数初始值。
+
+**成员初始化的顺序**
+
+成员初始化的顺序与它们在类定义中出现的顺序一致。构造函数初始化值列表中初始值的前后位置关系不会影响实际的初始化顺序。
+
+```c++
+class x{
+    int i;
+    int j;
+    x(int val): j(val),i(j){}
+    //出现问题，i在j之前被初始化。
+}
+```
+
+​		事实上，`i`在`j`前被初始化，因此这个初始值的效果是试图使用未定义的值`j`初始化`i`!
+
+> 最好令构造函数初始值的顺序与声明的顺序保持一致，而且如果可能的话，尽量避免使用某些成员初始化其他成员。
+
+**委托构造函数**
+
+```c++
+class Sales_data{
+    public:
+    	//非委托构造函数
+    	Sales_data(string s, unsigned cnt, double price):
+    	bookNo(s),units_sold(cnt),revenue(cnt*price) {}
+    	//其余构造函数全部委托给另一个构造函数
+    	Sales_data(): Sales_data("", 0, 0){}
+    	Sales_data(std::string s): Sales_data(s, 0, 0) {}
+    	
+    	//相当于走了第一个构造函数，然后走了第二个构造函数
+    	Sales_data(std::istream& is):Sales_data()
+        {read(is, *this);} 
+}
+```
+
+在实际中，如果定义了其他构造函数，那么最好也提供一个默认构造函数。
+
+**使用默认初始化对象**
+
+```c++
+    Sales_data obj();
+    cout << obj.isbn() ;//错误，声明了一个函数而非对象
+
+    Sales_data obj1("c++",10, 25.87);
+    cout << obj1.isbn();
+    Sales_data obj2;
+    cout << obj2.isbn() ;
+	//正确，声明了一个对象而非函数
+```
+
+**隐式的类类型转化**
+
+> 能够通过一条实参调用的构造函数定义一条从构造函数的参数类型向类类型隐式转换的规则。
+
+```c++
+    std::string null_book = "9-999-99";
+    Sales_data item;
+    //构造一个临时的Sales_data对象
+    //units_sold和revenue等于0
+    item.combine(null_book);
+```
+
+上述操作是合法的，编译器用给定的`string`自动创建一个`Sales_data` 对象，新生成的这个对象被传递给`combine` 。因为`combine` 的参数是一个常量引用，所以我们可以给该参数传递一个临时量。 
+
+但是，值得注意的是编译器只会自动地进行一步类型转换。如下面代码：
+
+```c++
+item.combine("9-999-9");
+```
+
+就隐式的进行了两种转化规则，先把`"9-999-9"`转化为`string` ，再把这个临时的`string`转化成`Sales_data`对象。正确写法如下：
+
+```c++
+item.combine(string("9-999-9"));
+item.combine(Sales_data("9-999-9"));
+```
+
+**抑制隐式转换**
+
+关键字`explicit`只对一个实参的构造函数有效，需要多个实参的构造函数不能用于实行隐式转换，只能在类内声明构造函数时使用`explicit` 关键字，在类外部定义时不应重复。
+
+**explicit构造函数只能用于直接初始化**
+
+```c++
+Sales_data item1(null_book);
+//正确
+Sales_data item2 = null_book;
+//错误，不能将explicit构造函数用于拷贝形式的初始化过程
+
+```
+
+对于`explicit`参数，我们可以使用这样的构造函数显示的强制进行转换：
+
+```c++
+item.combine(Sales_data(null_book));
+item.combine(static_cast<Sales_data>(cin));
+```
+
+**标准库中含有显示构造函数**
+
+接受一个单参量的`const char*`的`string`构造函数不是`explicit`的。
+
+接受一个容量参数的`vector`构造函数是`explicit`的。
+
+**聚合类**
+
+- 所有成员函数都是`public`的。
+- 没有类内初始值。
+- 没有定义任何构造函数。
+- 没有基类，没有`virtual`函数。
+
+如下：
+
+```c++
+struct Data{
+    int ival;
+    string s;
+}
+Data vall = { 0,"Anna"};
+//注意初始化顺序必须与声明一致。
+```
+
+如果初始化列表中的元素个数少于类的成员数量，则靠后的成员被值初始化。
+
+**constexpr构造函数**
+
+`constexpr`构造函数必须初始化所有数据类型，初始值或者使用`constexpr`构造函数，或者是一条常量表达式。
+
+`constexpr`构造函数用于生成`contexpr`对象以及`constexpr`函数的参数或者返回类型。
+
+#### 7.4 类的静态成员
+
+静态数据成员的类型可以是常量、引用、指针、类类型等。
+
+静态成员函数不与任何对象绑定在一起，它们不包含`this`指针，作为结果，静态成员函数不能声明为`const`的，而且我们也不能在`static`函数中使用`this`指针，这一限制适用于`this`的显式使用，也对调用非静态成员的隐式使用有效。
+
+我们可以通过作用域运算符直接访问静态成员函数。
+
+虽然静态成员函数不属于类的某个对象，但是我们可以通过类的对象、引用或者指针来访问静态成员函数。
+
+```c++
+Account ac1;
+Account *ac2 = &ac1;
+r = ac1.rate();
+r = ac2->rate();
+```
+
+成员函数不通过作用域运算符就能直接使用静态成员。
+
+我们可以在类的内部也可以在类的外部定义静态成员函数，当在外部定义静态成员时，不能重复static关键字，该关键字只出现在类内部的声明语句中。
+
+类似于全局变量，静态数据成员定义在任何函数之外，因此一旦它被定义，就将一直存在于程序的整个生命周期里。如果常量静态数据成员在类内被初始化了，通常情况下也应该在类的外部定义一下该成员。
+
+静态数据成员的类型可以是它所属的类类型，而非静态数据成员则受到限制，只能声明成他所属类的指针或引用。
+
+```c++
+class bar{
+    private:
+    	static bar mem1;//正确
+    	bar *mem2;//正确
+    	bar mem3；//错误
+}
+```
+
+静态成员和普通成员的另一个区别就是我们可以使用静态成员作为默认实参。非静态成员则不能。
+
+
+
+
+
+
+
+
+
+
+
